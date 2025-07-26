@@ -29,7 +29,6 @@ def main():
     parser.add_argument('--img_folder', type=str, default='downloads/example_data', help='Folder with input images')
     parser.add_argument('--out_folder', type=str, default='out_demo', help='Output folder to save rendered results')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference/fitting')
-    parser.add_argument('--body_detector', type=str, default='vitdet', choices=['vitdet', 'regnety'], help='Using regnety improves runtime and reduces memory')
     parser.add_argument('--file_type', nargs='+', default=['*.jpg', '*.png'], help='List of file extensions to consider')
     parser.add_argument('--render_res', type=int, default=840, help='Resolution for rendering')
     parser.add_argument('--focal_length', type=float, default=1000, help='Camera focal length corresponding to the input image')
@@ -63,25 +62,6 @@ def main():
     
     else:
         raise ValueError('Please provide either HaMeR or WildHands checkpoint')
-
-    # Load detector
-    from hamer.utils.utils_detectron2 import DefaultPredictor_Lazy
-    if args.body_detector == 'vitdet':
-        from detectron2.config import LazyConfig
-        import hamer
-        cfg_path = Path(hamer.__file__).parent/'configs'/'cascade_mask_rcnn_vitdet_h_75ep.py'
-        detectron2_cfg = LazyConfig.load(str(cfg_path))
-        detectron2_cfg.train.init_checkpoint = "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl"
-        for i in range(3):
-            detectron2_cfg.model.roi_heads.box_predictors[i].test_score_thresh = 0.25
-        detector = DefaultPredictor_Lazy(detectron2_cfg)
-    elif args.body_detector == 'regnety':
-        from detectron2 import model_zoo
-        from detectron2.config import get_cfg
-        detectron2_cfg = model_zoo.get_config('new_baselines/mask_rcnn_regnety_4gf_dds_FPN_400ep_LSJ.py', trained=True)
-        detectron2_cfg.model.roi_heads.box_predictor.test_score_thresh = 0.5
-        detectron2_cfg.model.roi_heads.box_predictor.test_nms_thresh   = 0.4
-        detector       = DefaultPredictor_Lazy(detectron2_cfg)
 
     # keypoint detector
     cpm = ViTPoseModel(device)
@@ -120,19 +100,14 @@ def main():
             intrx[0, 0] *= scale
             intrx[1, 1] *= scale
 
-        # Detect humans in image
-        det_out = detector(img_cv2)
-        img = img_cv2.copy()[:, :, ::-1]
+        # Process the whole image - create a bounding box for the entire image
+        img_height, img_width = img_cv2.shape[:2]
+        whole_image_bbox = np.array([[0, 0, img_width, img_height, 1.0]])  # [x1, y1, x2, y2, confidence]
 
-        det_instances = det_out['instances']
-        valid_idx = (det_instances.pred_classes==0) & (det_instances.scores > 0.5)
-        pred_bboxes=det_instances.pred_boxes.tensor[valid_idx].cpu().numpy()
-        pred_scores=det_instances.scores[valid_idx].cpu().numpy()
-
-        # Detect human keypoints for each person
+        # Detect human keypoints for the whole image
         vitposes_out = cpm.predict_pose(
             img_cv2,
-            [np.concatenate([pred_bboxes, pred_scores[:, None]], axis=1)],
+            [whole_image_bbox],
         )
 
         bboxes = []
@@ -215,19 +190,19 @@ def main():
                 all_right.append(is_right)
 
         # Render hands onto the image
-        if len(all_verts) > 0:
-            misc_args = dict(mesh_base_color=LIGHT_BLUE, scene_bg_color=(1, 1, 1), focal_length=scaled_focal_length)
+        # if len(all_verts) > 0:
+        #     misc_args = dict(mesh_base_color=LIGHT_BLUE, scene_bg_color=(1, 1, 1), focal_length=scaled_focal_length)
 
-            input_img = cv2.resize(img_cv2, (args.render_res, args.render_res), interpolation=cv2.INTER_CUBIC)
-            input_img = input_img.astype(np.float32)[:,:,::-1]/255.0
-            input_img = np.concatenate([input_img, np.ones_like(input_img[:,:,:1])], axis=2)
+        #     input_img = cv2.resize(img_cv2, (args.render_res, args.render_res), interpolation=cv2.INTER_CUBIC)
+        #     input_img = input_img.astype(np.float32)[:,:,::-1]/255.0
+        #     input_img = np.concatenate([input_img, np.ones_like(input_img[:,:,:1])], axis=2)
 
-            cam_view = renderer.render_rgba_multiple(all_verts, cam_t=all_cam_t, render_res=[args.render_res, args.render_res], is_right=all_right, **misc_args)
-            input_img_overlay = input_img[:,:,:3] * (1-cam_view[:,:,3:]) + cam_view[:,:,:3] * cam_view[:,:,3:]
+        #     cam_view = renderer.render_rgba_multiple(all_verts, cam_t=all_cam_t, render_res=[args.render_res, args.render_res], is_right=all_right, **misc_args)
+        #     input_img_overlay = input_img[:,:,:3] * (1-cam_view[:,:,3:]) + cam_view[:,:,:3] * cam_view[:,:,3:]
             
-            # Get filename from path img_path
-            img_fn, _ = os.path.splitext(os.path.basename(img_path))
-            cv2.imwrite(os.path.join(args.out_folder, f'{img_fn}.jpg'), 255*input_img_overlay[:, :, ::-1])
+        #     # Get filename from path img_path
+        #     img_fn, _ = os.path.splitext(os.path.basename(img_path))
+        #     cv2.imwrite(os.path.join(args.out_folder, f'{img_fn}.jpg'), 255*input_img_overlay[:, :, ::-1])
 
 if __name__ == '__main__':
     main()

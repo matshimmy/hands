@@ -7,7 +7,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'gdown',
-        'numpy<2',
+        'numpy<2.0.0',
         'opencv-python',
         'pyrender',
         'pytorch-lightning',
@@ -16,7 +16,6 @@ setup(
         'torch',
         'torchvision',
         'yacs',
-        'detectron2 @ git+https://github.com/facebookresearch/detectron2',
         'chumpy @ git+https://github.com/mattloper/chumpy',
         'mmcv==1.3.9',
         'timm',
