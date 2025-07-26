@@ -37,7 +37,7 @@ Some example images are provided in the `downloads/example_data` folder. The cod
 
 WildHands requires the focal length as input to the network. This model is trained on egocentric data only.
 ```
-python demo.py --img_folder downloads/example_data --out_folder out --focal_length 1000 --wildhands_ckpt downloads/wildhands/wildhands.ckpt
+python demo.py
 ```
 
 ## Acknowledgements

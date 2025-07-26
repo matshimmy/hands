@@ -24,10 +24,8 @@ LIGHT_BLUE=(0.65098039,  0.74117647,  0.85882353)
 
 def main():
     parser = argparse.ArgumentParser(description='HaMeR demo code')
-    parser.add_argument('--hamer_ckpt', type=str, default=None, help='Path to pretrained model checkpoint')
-    parser.add_argument('--wildhands_ckpt', type=str, default=None, help='Path to pretrained WildHands model checkpoint')
     parser.add_argument('--img_folder', type=str, default='downloads/example_data', help='Folder with input images')
-    parser.add_argument('--out_folder', type=str, default='out_demo', help='Output folder to save rendered results')
+    parser.add_argument('--out_folder', type=str, default='out', help='Output folder to save rendered results')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference/fitting')
     parser.add_argument('--file_type', nargs='+', default=['*.jpg', '*.png'], help='List of file extensions to consider')
     parser.add_argument('--render_res', type=int, default=840, help='Resolution for rendering')
@@ -36,32 +34,20 @@ def main():
     args = parser.parse_args()
     
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    
-    if args.hamer_ckpt is not None: # Setup HaMeR model
-        assert args.wildhands_ckpt is None, 'Cannot use both HaMeR and WildHands models together'
-        model, cfg = load_hamer(args.hamer_ckpt)
-        model = model.to(device)
-        model.eval()
 
-        renderer = Renderer(cfg, faces=model.mano.faces)
+    cfg = construct_args()
+    model = Wrapper(cfg)
+    ckpt = torch.load("downloads/wildhands/wildhands.ckpt", map_location='cpu')
+    ckpt_params = {}
+    redundant_keys = ['head_o', 'arti_head', 'grasp_classifier']
+    for k, v in ckpt["state_dict"].items():
+        if not any([rk in k for rk in redundant_keys]):
+            ckpt_params[k] = v
+    model.load_state_dict(ckpt_params)
+    model = model.to(device)
+    model.eval()
 
-    elif args.wildhands_ckpt is not None: # Setup WildHands model
-        cfg = construct_args()
-        model = Wrapper(cfg)
-        ckpt = torch.load(args.wildhands_ckpt, map_location='cpu')
-        ckpt_params = {}
-        redundant_keys = ['head_o', 'arti_head', 'grasp_classifier']
-        for k, v in ckpt["state_dict"].items():
-            if not any([rk in k for rk in redundant_keys]):
-                ckpt_params[k] = v
-        model.load_state_dict(ckpt_params)
-        model = model.to(device)
-        model.eval()
-
-        renderer = Renderer(cfg, faces = model.model.mano_r.mano.faces)
-    
-    else:
-        raise ValueError('Please provide either HaMeR or WildHands checkpoint')
+    renderer = Renderer(cfg, faces = model.model.mano_r.mano.faces)
 
     # keypoint detector
     cpm = ViTPoseModel(device)
@@ -83,22 +69,21 @@ def main():
         img_cv2 = img.astype(np.uint8)[..., ::-1]
 
         intrx = None
-        if args.wildhands_ckpt is not None:
-            # WildHands requires principal point
-            px, py = args.principal
-            if px == -1 and py == -1:
-                px = cv_img.shape[1] / 2
-                py = cv_img.shape[0] / 2
-            intrx = np.array([[args.focal_length, 0, px], [0, args.focal_length, py], [0, 0, 1]])
 
-            # transform intrx as per padded image
-            scale = args.render_res / input_res
-            px = px - (cv_img.shape[1] - input_res) / 2
-            py = py - (cv_img.shape[0] - input_res) / 2
-            intrx[0, 2] = px * scale
-            intrx[1, 2] = py * scale
-            intrx[0, 0] *= scale
-            intrx[1, 1] *= scale
+        px, py = args.principal
+        if px == -1 and py == -1:
+            px = cv_img.shape[1] / 2
+            py = cv_img.shape[0] / 2
+        intrx = np.array([[args.focal_length, 0, px], [0, args.focal_length, py], [0, 0, 1]])
+
+        # transform intrx as per padded image
+        scale = args.render_res / input_res
+        px = px - (cv_img.shape[1] - input_res) / 2
+        py = py - (cv_img.shape[0] - input_res) / 2
+        intrx[0, 2] = px * scale
+        intrx[1, 2] = py * scale
+        intrx[0, 0] *= scale
+        intrx[1, 1] *= scale
 
         # Process the whole image - create a bounding box for the entire image
         img_height, img_width = img_cv2.shape[:2]
@@ -139,12 +124,8 @@ def main():
         right = np.stack(is_right)
 
         scaled_focal_length = args.focal_length * args.render_res / input_res
-        if args.hamer_ckpt is not None:
-            dataset = ViTDetDataset(cfg, img_cv2, boxes, right, rescale_factor=2.0)
-            dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=0)
-        elif args.wildhands_ckpt is not None:
-            dataset = WildHandsDataset(cfg, img, boxes, right, focal_length=scaled_focal_length, rescale_factor=1.75, intrx=intrx)
-            dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=0)
+        dataset = WildHandsDataset(cfg, img, boxes, right, focal_length=scaled_focal_length, rescale_factor=1.75, intrx=intrx)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=0)
 
         all_verts = []
         all_cam_t = []
@@ -155,35 +136,19 @@ def main():
             with torch.no_grad():
                 out = model(batch)
 
-            if args.hamer_ckpt is not None: # HaMeR predictions
-                batch_right = batch['right']
-                multiplier = (2 * batch_right - 1)
-                pred_cam = out['pred_cam']
-                pred_cam[:,1] = multiplier*pred_cam[:,1]
-                box_center = batch["box_center"].float()
-                box_size = batch["box_size"].float()
-                img_size = batch["img_size"].float()
-                pred_cam_t_full = cam_crop_to_full(pred_cam, box_center, box_size, img_size, scaled_focal_length).detach().cpu().numpy()
-            
-            elif args.wildhands_ckpt is not None: # WildHands predictions
-                batch_right = batch[1]['right'] # batch = (inputs, meta_info)
-                pred_cam_t_full_r_wh = out['pred.cam_t.r'].cpu().numpy()
-                pred_cam_t_full_l_wh = out['pred.cam_t.l'].cpu().numpy()
-                pred_vertices_r = out['pred.vertices.r'].cpu().numpy()
-                pred_vertices_l = out['pred.vertices.l'].cpu().numpy()
+            batch_right = batch[1]['right'] # batch = (inputs, meta_info)
+            pred_cam_t_full_r_wh = out['pred.cam_t.r'].cpu().numpy()
+            pred_cam_t_full_l_wh = out['pred.cam_t.l'].cpu().numpy()
+            pred_vertices_r = out['pred.vertices.r'].cpu().numpy()
+            pred_vertices_l = out['pred.vertices.l'].cpu().numpy()
             
             batch_size = batch_right.shape[0]
             for n in range(batch_size):
 
                 # Add all verts and cams to list
                 is_right = batch_right[n].cpu().numpy()
-                if args.hamer_ckpt is not None:
-                    verts = out['pred_vertices'][n].detach().cpu().numpy()
-                    verts[:,0] = (2*is_right-1)*verts[:,0]
-                    cam_t = pred_cam_t_full[n]
-                elif args.wildhands_ckpt is not None:
-                    verts = pred_vertices_r[n] if is_right else pred_vertices_l[n]
-                    cam_t = pred_cam_t_full_r_wh[n] if is_right else pred_cam_t_full_l_wh[n]
+                verts = pred_vertices_r[n] if is_right else pred_vertices_l[n]
+                cam_t = pred_cam_t_full_r_wh[n] if is_right else pred_cam_t_full_l_wh[n]
                 
                 all_verts.append(verts)
                 all_cam_t.append(cam_t)
