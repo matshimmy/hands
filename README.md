@@ -1,28 +1,21 @@
-# Demo
-
-This repo contains demo for hand pose estimation using [HaMeR](https://arxiv.org/abs/2312.05251) and [WildHands](https://ap229997.github.io/projects/hands/assets/paper.pdf) models. Note that hand crops are obtained from [ViTPose](https://github.com/ViTAE-Transformer/ViTPose) predictions which are not always accurate and currently the code does not handle the erroneous cases.
-
-For ViTPose checkpoint, download `wholebody.pth` from [here](https://drive.google.com/drive/folders/1vjqBPicZagi0Xx0c_ItzAlISaj-pCigG) and put under `downloads/_DATA/vitpose_ckpts/vitpose+_huge/`.
-
 ## Installation
-Clone the repo:
-```
-git clone -b demo --single-branch --recursive https://github.com/ap229997/hands.git
-```
 
-Setup conda environment:
+First, install Python 3.10:
 ```bash
-conda create --name demo python=3.10
-conda activate demo
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.10 python3.10-venv
 ```
 
-Install dependencies:
+Then create and activate the virtual environment:
 ```bash
-conda install pytorch=1.13.1 torchvision=0.14.1 pytorch-cuda=11.7 -c pytorch -c nvidia
-conda install -c fvcore -c iopath -c conda-forge fvcore iopath
-conda install -c bottler nvidiacub
-conda install pytorch3d -c pytorch3d
+python3.10 -m venv .hands
+source .hands/bin/activate
+```
 
+Then, you can install the rest of the dependencies. This is for CUDA 11.7, but you can adapt accordingly:
+```bash
+pip install torch==1.13.1 torchvision==0.14.1 --index-url https://download.pytorch.org/whl/cu117
 pip install -e .[all]
 pip install -v -e third-party/ViTPose
 pip install easydict
