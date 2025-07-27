@@ -23,14 +23,6 @@ bash fetch_models.sh
 
 Please visit the [MANO website](https://mano.is.tue.mpg.de) and register to get access to the downloads section. WildHands requires both `MANO_RIGHT.pkl` and `MANO_LEFT.pkl` (put them under the `downloads/wildhands` folder).
 
-Set the required paths:
-```bash
-export CACHE_DIR_HAMER=downloads/_DATA
-export HAMER_MANO_DIR=downloads/_DATA/data
-export WILDHANDS_MANO_DIR=downloads/wildhands
-export INTRX_PATH=downloads/wildhands/intrx.pkl
-```
-
 ## Usage
 
 Some example images are provided in the `downloads/example_data` folder. The code also requires the camera focal length to get 3D predictions. The default value is set to 1000 which works for the provided example images.

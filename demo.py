@@ -1,3 +1,10 @@
+import os
+
+os.environ["CACHE_DIR_HAMER"] = "downloads/_DATA"
+os.environ["HAMER_MANO_DIR"] = "downloads/_DATA/data"
+os.environ["WILDHANDS_MANO_DIR"] = "downloads/wildhands"
+os.environ["INTRX_PATH"] = "downloads/wildhands/intrx.pkl"
+
 from pathlib import Path
 import torch
 import argparse
