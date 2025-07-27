@@ -134,7 +134,7 @@ def main():
         dataset = WildHandsDataset(cfg, img, boxes, right, focal_length=scaled_focal_length, rescale_factor=1.75, intrx=intrx)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=0)
 
-        all_verts = []
+        all_joints2d = []
         all_cam_t = []
         all_right = []
         
@@ -146,35 +146,79 @@ def main():
             batch_right = batch[1]['right'] # batch = (inputs, meta_info)
             pred_cam_t_full_r_wh = out['pred.cam_t.r'].cpu().numpy()
             pred_cam_t_full_l_wh = out['pred.cam_t.l'].cpu().numpy()
-            pred_vertices_r = out['pred.vertices.r'].cpu().numpy()
-            pred_vertices_l = out['pred.vertices.l'].cpu().numpy()
+            pred_joints3d_r = out['pred.joints3d.r'].cpu().numpy()
+            pred_joints3d_l = out['pred.joints3d.l'].cpu().numpy()
+            # Use the original intrinsics that were computed for the full image
+            # instead of the batch intrinsics which are for the cropped image
             
             batch_size = batch_right.shape[0]
             for n in range(batch_size):
 
-                # Add all verts and cams to list
+                # Add all joints and cams to list
                 is_right = batch_right[n].cpu().numpy()
-                verts = pred_vertices_r[n] if is_right else pred_vertices_l[n]
+                joints3d = pred_joints3d_r[n] if is_right else pred_joints3d_l[n]
                 cam_t = pred_cam_t_full_r_wh[n] if is_right else pred_cam_t_full_l_wh[n]
+                # Use the original intrinsics computed earlier in the code
+                intrx = intrx  # This is the original intrx from line 87
                 
-                all_verts.append(verts)
+                # Project 3D joints to 2D
+                # Bring joints into camera frame by adding camera translation
+                joints3d_cam = joints3d + cam_t
+                
+                # Pinhole projection using intrinsics
+                fx, fy = intrx[0, 0], intrx[1, 1]
+                cx, cy = intrx[0, 2], intrx[1, 2]
+                
+                # Project to 2D
+                joints2d = np.zeros_like(joints3d[:, :2])
+                valid_mask = joints3d_cam[:, 2] > 0  # Only project points in front of camera
+                
+                if np.any(valid_mask):
+                    joints2d[valid_mask, 0] = fx * joints3d_cam[valid_mask, 0] / joints3d_cam[valid_mask, 2] + cx
+                    joints2d[valid_mask, 1] = fy * joints3d_cam[valid_mask, 1] / joints3d_cam[valid_mask, 2] + cy
+                
+                # Transform from cropped/resized coordinates back to original image coordinates
+                # The joints are projected in the 840x840 cropped image space
+                # We need to transform them back to the original image space
+                scale_back = input_res / args.render_res
+                offset_x = (cv_img.shape[1] - input_res) / 2
+                offset_y = (cv_img.shape[0] - input_res) / 2
+                
+                joints2d[:, 0] = joints2d[:, 0] * scale_back + offset_x
+                joints2d[:, 1] = joints2d[:, 1] * scale_back + offset_y
+                
+                all_joints2d.append(joints2d)  # Using joints2d instead of vertices
                 all_cam_t.append(cam_t)
                 all_right.append(is_right)
 
-        # Render hands onto the image
-        # if len(all_verts) > 0:
-        #     misc_args = dict(mesh_base_color=LIGHT_BLUE, scene_bg_color=(1, 1, 1), focal_length=scaled_focal_length)
-
-        #     input_img = cv2.resize(img_cv2, (args.render_res, args.render_res), interpolation=cv2.INTER_CUBIC)
-        #     input_img = input_img.astype(np.float32)[:,:,::-1]/255.0
-        #     input_img = np.concatenate([input_img, np.ones_like(input_img[:,:,:1])], axis=2)
-
-        #     cam_view = renderer.render_rgba_multiple(all_verts, cam_t=all_cam_t, render_res=[args.render_res, args.render_res], is_right=all_right, **misc_args)
-        #     input_img_overlay = input_img[:,:,:3] * (1-cam_view[:,:,3:]) + cam_view[:,:,:3] * cam_view[:,:,3:]
+        # Visualize 2D joint projections on the image
+        if len(all_joints2d) > 0:
+            # Create a copy of the original image for visualization
+            vis_img = cv_img.copy()  # Use original image, not the cropped one
             
-        #     # Get filename from path img_path
-        #     img_fn, _ = os.path.splitext(os.path.basename(img_path))
-        #     cv2.imwrite(os.path.join(args.out_folder, f'{img_fn}.jpg'), 255*input_img_overlay[:, :, ::-1])
+            # Define colors for left and right hands
+            left_color = (0, 255, 0)   # Green for left hand
+            right_color = (0, 0, 255)  # Red for right hand
+            
+            for i, joints2d in enumerate(all_joints2d):
+                is_right_hand = all_right[i]
+                color = right_color if is_right_hand else left_color
+                
+                # Draw circles for each joint
+                for j, joint in enumerate(joints2d):
+                    x, y = int(joint[0]), int(joint[1])
+                    
+                    # Only draw if joint is within image bounds
+                    if 0 <= x < vis_img.shape[1] and 0 <= y < vis_img.shape[0]:
+                        # Draw a filled circle for each joint
+                        cv2.circle(vis_img, (x, y), 5, color, -1)
+            
+            # Get filename from path img_path
+            img_fn, _ = os.path.splitext(os.path.basename(img_path))
+            cv2.imwrite(os.path.join(args.out_folder, f'{img_fn}_joints.jpg'), vis_img)
+            
+            print(f"Saved joint visualization to {os.path.join(args.out_folder, f'{img_fn}_joints.jpg')}")
+            print(f"Detected {len(all_joints2d)} hands with 21 joints each")
 
 if __name__ == '__main__':
     main()
