@@ -12,7 +12,7 @@ from hamer.configs import CACHE_DIR_HAMER
 os.environ["PYOPENGL_PLATFORM"] = "egl"
 
 # project root directory
-ROOT_DIR = "./external/hands"
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 VIT_DIR = os.path.join(ROOT_DIR, "third-party/ViTPose")
 
 class ViTPoseModel(object):

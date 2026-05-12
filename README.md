@@ -1,34 +1,55 @@
-Setup conda environment:
+# WildHands: 3D Hand Pose Estimation in Everyday Egocentric Images
+
+## Installation
+
+First, install Python 3.10:
 ```bash
-conda create --name demo python=3.10
-conda activate demo
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.10 python3.10-venv
 ```
 
-Install dependencies:
+Then create and activate the virtual environment:
 ```bash
-conda install pytorch=1.13.1 torchvision=0.14.1 pytorch-cuda=11.7 -c pytorch -c nvidia
-conda install -c fvcore -c iopath -c conda-forge fvcore iopath
-conda install -c bottler nvidiacub
-conda install pytorch3d -c pytorch3d
+python3.10 -m venv .wildhands
+source .wildhands/bin/activate
+```
 
+Fetch the submodules (ViTPose):
+```bash
+git submodule update --init --recursive
+```
+
+Then install the rest of the dependencies:
+```bash
 pip install -e .[all]
 pip install -v -e third-party/ViTPose
 pip install easydict
 ```
 
-Download the trained models:
+Install PyTorch:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+Install PyTorch3D:
+```bash
+pip install fvcore iopath
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.9"
+```
+
+You also need to download the trained models:
 ```bash
 bash fetch_models.sh
 ```
 
-Please visit the [MANO website](https://mano.is.tue.mpg.de) and register to get access to the downloads section. WildHands requires both `MANO_RIGHT.pkl` and `MANO_LEFT.pkl` (put them under the `downloads/wildhands` folder).
+Besides these files, you also need to download the MANO model. Please visit the [MANO website](https://mano.is.tue.mpg.de) and register to get access to the downloads section. WildHands requires both `MANO_RIGHT.pkl` and `MANO_LEFT.pkl`. You need to put them under the `downloads/wildhands` folder.
 
-## Usage
+## Demo
 
-Some example images are provided in the `downloads/example_data` folder. The code also requires the camera focal length to get 3D predictions. The default value is set to 1000 which works for the provided example images.
+Some example images are provided in the `downloads/example_data` folder. The code also requires the camera focal length to get 3D predictions. The default value is set to 1000 which works for the provided example images. WildHands requires the focal length as input to the network, and this model is trained on egocentric data only.
 
-WildHands requires the focal length as input to the network. This model is trained on egocentric data only.
-```
+```bash
 python demo.py
 ```
 

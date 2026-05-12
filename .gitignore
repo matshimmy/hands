@@ -8,6 +8,7 @@ externals*
 logs*
 third-party/ViTPose*
 example_data/*
+.wildhands
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
