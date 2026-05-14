@@ -4,9 +4,21 @@ Run WildHands prediction on images. Saves raw joint data only (no mesh, no drawi
 Outputs per hand:
     *_joints.json  — 21 joints (3D model-space + 2D image-space) + bones
 
-Joint order is remapped from MANO to the OpenPose-style 21-joint layout
-(0 wrist, 1-4 thumb, 5-8 index, 9-12 middle, 13-16 ring, 17-20 pinky) so the
-JSON matches what the HaMeR joint_prediction tools produce.
+Joint order is the raw MANO+tips order WildHands produces (matches the
+linux-benchmark-hands archive behaviour). NOTE: this differs from the
+OpenPose-style order HaMeR/WiLoR write, so the per-index meaning of
+joints_3d/joints_2d is:
+    0       wrist
+    1..3    index  MCP / PIP / DIP
+    4..6    middle MCP / PIP / DIP
+    7..9    pinky  MCP / PIP / DIP
+    10..12  ring   MCP / PIP / DIP
+    13..15  thumb  MCP / PIP / DIP
+    16..20  index_tip / middle_tip / ring_tip / pinky_tip / thumb_tip
+The JOINT_NAMES / BONES constants below are still the OpenPose-style ones used
+elsewhere in this repo; we leave them in for now so the JSON schema is uniform
+across algorithms. The mismatch with the actual ordering is intentional and
+reproduces the archive's MPJPE numbers (~32-36 mm).
 
 Hand detection: no body detector is used. The full frame is passed to ViTPose,
 which produces the hand keypoints used to crop hands for WildHands (same approach
@@ -49,9 +61,6 @@ from vitpose_model import ViTPoseModel
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_CKPT = os.path.join(_DOWNLOADS, "wildhands", "wildhands.ckpt")
-
-# WildHands returns joints in MANO order; remap to OpenPose-style 21-joint order.
-MANO_TO_OPENPOSE = [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18, 10, 11, 12, 19, 7, 8, 9, 20]
 
 BONES = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -243,9 +252,6 @@ def main():
                 is_right = bool(batch_right[n] > 0.5)
                 joints3d = joints3d_r[n] if is_right else joints3d_l[n]
                 cam_t = cam_t_r[n] if is_right else cam_t_l[n]
-
-                # MANO -> OpenPose joint order
-                joints3d = joints3d[MANO_TO_OPENPOSE]
 
                 joints3d_cam = joints3d + cam_t
                 joints2d = project_to_image(joints3d_cam, intrx)
