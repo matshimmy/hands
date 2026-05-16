@@ -5,9 +5,18 @@ from smplx.lbs import lbs
 from smplx.utils import MANOOutput, Tensor
 
 
+# Permutation from smplx's native MANO output order (wrist, then
+# index/middle/pinky/ring/thumb proximal->distal, then 5 tips in
+# thumb/index/middle/ring/pinky order) to the canonical 21-joint
+# OpenPose-style order (wrist, thumb, index, middle, ring, pinky;
+# 4 joints per finger). Matches HaMeR's mano_wrapper.MANO.joint_map.
+MANO_TO_OPENPOSE = [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18, 10, 11, 12, 19, 7, 8, 9, 20]
+
+
 class MANO(smplx.MANO):
     def __init__(self, *args, **kwargs):
         super(MANO, self).__init__(*args, **kwargs)
+        self.register_buffer('joint_map', torch.tensor(MANO_TO_OPENPOSE, dtype=torch.long), persistent=False)
 
     def forward(
         self,
@@ -49,6 +58,9 @@ class MANO(smplx.MANO):
 
         # Add pre-selected extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints) # this line is commented in smplx package
+
+        # Reorder to OpenPose-style 21-joint convention (matches HaMeR).
+        joints = joints[:, self.joint_map, :]
 
         if self.joint_mapper is not None:
             joints = self.joint_mapper(joints)
