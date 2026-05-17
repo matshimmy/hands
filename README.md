@@ -22,7 +22,7 @@ git submodule update --init --recursive
 
 Then install the rest of the dependencies:
 ```bash
-pip install -e .[all]
+pip install -e '.[all]'
 pip install -v -e third-party/ViTPose
 pip install easydict
 ```
@@ -35,7 +35,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 Install PyTorch3D:
 ```bash
 pip install fvcore iopath
-pip install "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.9"
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@c307c64c7000cd370ff379be421bd92f6dec577b""
 ```
 
 You also need to download the trained models:
